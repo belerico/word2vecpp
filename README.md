@@ -3,7 +3,7 @@
 A C++ word2vec implementation, following the training style of https://github.com/tmikolov/word2vec.git  
 This software has been tested on **Pop_OS 20.10** (an Ubuntu patch) with **g++ (Ubuntu 10.2.0-13ubuntu1) 10.2.0**
 
-## Installation
+## Installation & Run
 
 To install and run the software:
 
@@ -61,4 +61,10 @@ As an example, one can train a word2vec model on the [text8](http://mattmahoney.
 1. chmod +x train_text8.sh
 2. ./train_text8.sh
 
-This will download and unzip the text8 dataset in the current directory and train a word2vec CBOW model
+This will download and unzip the text8 dataset in the current directory and train a word2vec CBOW model  
+
+## Future works
+
+- Implement a function to instantly retrieve a word vector
+- Implement distance functions between vectors, such as cosine or L2
+- Implement a function to get nearest neighbours given a word
