@@ -17,11 +17,13 @@ using namespace vocab;
 
 namespace w2v
 {
-Word2Vec::Word2Vec(string train_file_path, string out_vectors_path, string out_vocab_path,
-         string in_vocab_path, int emb_dim, int min_count, int window_size,
-         int ns_size, int max_sentence_length, int epochs, int num_workers,
-         float unigram_pow, float sample, float init_lr, bool cbow,
-         bool shrink_window_size, long long unigram_table_size, long log_freq)
+Word2Vec::Word2Vec(string train_file_path, string out_vectors_path,
+                   string out_vocab_path, string in_vocab_path, int emb_dim,
+                   int min_count, int window_size, int ns_size,
+                   int max_sentence_length, int epochs, int num_workers,
+                   float unigram_pow, float sample, float init_lr, bool cbow,
+                   bool shrink_window_size, long long unigram_table_size,
+                   long log_freq)
     : train_file_path(train_file_path), out_vectors_path(out_vectors_path),
       emb_dim(emb_dim), window_size(window_size), ns_size(ns_size),
       max_sentence_length(max_sentence_length), epochs(epochs),
@@ -37,8 +39,9 @@ Word2Vec::Word2Vec(string train_file_path, string out_vectors_path, string out_v
         this->vocab.save_vocab(out_vocab_path);
     }
     else
-        this->vocab = read_vocab(in_vocab_path, sample, true);
-    
+        this->vocab = Vocab::read_vocab(in_vocab_path, sample, true);
+    if (!cbow && init_lr == 0.05)
+        this->init_lr = 0.025;
     this->init_net();
     this->build_exp_table();
     this->build_unigram_table();
@@ -51,6 +54,84 @@ Word2Vec::Word2Vec(string train_file_path, string out_vectors_path, string out_v
     if (!feof(fi))
         is >> word;
 }; */
+
+std::vector<float> Word2Vec::get_vector_syn0(string word)
+{
+    /* size_t word_idx = this->vocab.word2id(word) * this->emb_dim;
+    std::vector<float> v(this->emb_dim);
+    for (int i = 0; i < this->emb_dim; i++)
+        v[i] = this->syn0[word_idx + i];
+    return v; */
+    long word_idx = this->vocab.word2id(word);
+    if (word_idx == -1)
+        return vector<float>(0);
+    float *p = &this->syn0[word_idx * this->emb_dim];
+    vector<float> v{p, p + this->emb_dim};
+    return v;
+};
+
+std::vector<float> Word2Vec::get_vector_syn1(string word)
+{
+    /* size_t word_idx = this->vocab.word2id(word) * this->emb_dim;
+    std::vector<float> v(this->emb_dim);
+    for (int i = 0; i < this->emb_dim; i++)
+        v[i] = this->syn1[word_idx + i];
+    return v; */
+    long word_idx = this->vocab.word2id(word);
+    if (word_idx == -1)
+        return vector<float>(0);
+    float *p = &this->syn1[word_idx * this->emb_dim];
+    vector<float> v{p, p + this->emb_dim};
+    return v;
+};
+
+vector<vector<float>> Word2Vec::get_syn0()
+{
+    vector<vector<float>> v(this->vocab.size());
+    for (size_t i = 0; i < this->vocab.size(); i++)
+    {
+        v[i] = vector<float>(this->emb_dim);
+        for (int j = 0; j < this->emb_dim; j++)
+            v[i][j] = this->syn0[i * this->emb_dim + j];
+    }
+    return v;
+};
+
+vector<float> Word2Vec::get_syn0_flat()
+{
+    vector<float> v(this->vocab.size() * this->emb_dim);
+    for (size_t i = 0; i < this->vocab.size(); i++)
+    {
+        for (int j = 0; j < this->emb_dim; j++)
+            v[i * this->emb_dim + j] = this->syn0[i * this->emb_dim + j];
+    }
+    return v;
+};
+
+vector<vector<float>> Word2Vec::get_syn1()
+{
+    vector<vector<float>> v(this->vocab.size());
+    for (size_t i = 0; i < this->vocab.size(); i++)
+    {
+        v[i] = vector<float>(this->emb_dim);
+        for (int j = 0; j < this->emb_dim; j++)
+            v[i][j] = this->syn1[i * this->emb_dim + j];
+    }
+    return v;
+};
+
+vector<float> Word2Vec::get_syn1_flat()
+{
+    vector<float> v(this->vocab.size() * this->emb_dim);
+    for (size_t i = 0; i < this->vocab.size(); i++)
+    {
+        for (int j = 0; j < this->emb_dim; j++)
+            v[i * this->emb_dim + j] = this->syn1[i * this->emb_dim + j];
+    }
+    return v;
+};
+
+const Vocab Word2Vec::get_vocab() const { return this->vocab; };
 
 void read_word(FILE *fi, string &word)
 {
@@ -116,12 +197,12 @@ void Word2Vec::train()
 
     if (this->cbow)
         for (int i = 0; i < this->num_workers; i++)
-            workers[i] =
-                thread(&Word2Vec::train_thread_cbow, this, i, ref(global_wc), start);
+            workers[i] = thread(&Word2Vec::train_thread_cbow, this, i,
+                                ref(global_wc), start);
     else
         for (int i = 0; i < this->num_workers; i++)
-            workers[i] =
-                thread(&Word2Vec::train_thread_sg, this, i, ref(global_wc), start);
+            workers[i] = thread(&Word2Vec::train_thread_sg, this, i,
+                                ref(global_wc), start);
 
     for (int i = 0; i < this->num_workers; i++)
         workers[i].join();
@@ -132,14 +213,13 @@ void Word2Vec::train()
 };
 
 void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
-                          chrono::system_clock::time_point start)
+                               chrono::system_clock::time_point start)
 {
-    int i, j, k, shrink_value = 0, sentence_length = 0, sentence_position = 0,
-                 epoch = this->epochs;
-    long long word, context_word,
-        wc = 0, prev_wc = 0, sentence[this->max_sentence_length + 1], file_size,
-        target, label, train_words = this->vocab.get_train_words(), target_idx,
-        context_idx;
+    long long i, j, k,
+        shrink_value = 0, sentence_length = 0, sentence_position = 0,
+        epoch = this->epochs, word, context_word, wc = 0, prev_wc = 0,
+        sentence[this->max_sentence_length + 1], file_size, target, label,
+        train_words = this->vocab.get_train_words(), target_idx, context_idx;
     unsigned long long next_random = (long long)id;
     float f, g, init_lr = this->init_lr;
     string w;
@@ -182,7 +262,7 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
             while (true)
             {
                 read_word(fi, w);
-                if (feof(fi) || !w.compare(""))
+                if (feof(fi) || w.empty())
                     break;
                 else
                     word = this->vocab.word2id(w);
@@ -244,7 +324,7 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
                 else if (j >= sentence_length)
                     continue;
                 context_word = sentence[j];
-                context_idx = context_word * this->emb_dim;
+                context_idx = context_word * emb_dim;
 
                 for (j = 0; j < this->emb_dim; j++)
                     neu1e[j] = 0;
@@ -270,7 +350,7 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
                                 continue;
                             label = 0;
                         }
-                        target_idx = target * this->emb_dim;
+                        target_idx = target * emb_dim;
 
                         // Calculate the dot-product between the input words
                         // weights (in syn0) and the output word's weights
@@ -323,13 +403,13 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
 }
 
 void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
-                            chrono::system_clock::time_point start)
+                                 chrono::system_clock::time_point start)
 {
-    int i, j, k, shrink_value = 0, sentence_length = 0, sentence_position = 0,
-                 epoch = this->epochs, cw;
-    long long word, context_word,
-        wc = 0, prev_wc = 0, sentence[this->max_sentence_length + 1], file_size,
-        target, label, train_words = this->vocab.get_train_words(), target_idx;
+    long long i, j, k,
+        shrink_value = 0, sentence_length = 0, sentence_position = 0,
+        epoch = this->epochs, cw, word, context_word, wc = 0, prev_wc = 0,
+        sentence[this->max_sentence_length + 1], file_size, target, label,
+        train_words = this->vocab.get_train_words(), target_idx, context_idx;
     unsigned long long next_random = (long long)id;
     float f, g, init_lr = this->init_lr;
     string w;
@@ -373,7 +453,7 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
             while (true)
             {
                 read_word(fi, w);
-                if (feof(fi) || !w.compare(""))
+                if (feof(fi) || w.empty())
                     break;
                 else
                     word = this->vocab.word2id(w);
@@ -442,9 +522,10 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                     continue;
 
                 context_word = sentence[j];
+                context_idx = context_word * emb_dim;
 
                 for (j = 0; j < this->emb_dim; j++)
-                    neu1[j] += this->syn0[context_word * this->emb_dim + j];
+                    neu1[j] += this->syn0[context_idx + j];
 
                 cw++;
             }
@@ -474,7 +555,7 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                             continue;
                         label = 0;
                     }
-                    target_idx = target * this->emb_dim;
+                    target_idx = target * emb_dim;
 
                     // Dot product between average of the context word vectors
                     // (neu1) and target word vector (syn1[target])
@@ -520,12 +601,12 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                         continue;
 
                     context_word = sentence[j];
+                    context_idx = context_word * emb_dim;
 
                     // Update context vectors
                     for (j = 0; j < this->emb_dim; j++)
-                        this->syn0[context_word * this->emb_dim + j] =
-                            this->syn0[context_word * this->emb_dim + j] +
-                            neu1e[j];
+                        this->syn0[context_idx + j] =
+                            this->syn0[context_idx + j] + neu1e[j];
                 }
         }
         sentence_position++;

@@ -2,7 +2,6 @@
 #define W2V_H
 
 #include "vocab.h"
-#include <array>
 #include <atomic>
 #include <chrono>
 #include <random>
@@ -15,16 +14,27 @@ namespace w2v
 class Word2Vec
 {
 public:
-    Word2Vec(std::string train_file_path, std::string out_vectors_path,
-        std::string out_vocab_path, std::string in_vocab_path, int emb_dim, int min_count, int window_size,
-        int ns_size, int max_sentence_length, int epochs, int num_workers,
-        float unigram_pow, float sample, float init_lr, bool cbow,
-        bool shrink_window_size, long long unigram_table_size, long log_freq);
+    Word2Vec(std::string train_file_path,
+             std::string out_vectors_path = "./vectors.txt",
+             std::string out_vocab_path = "./vocab.txt",
+             std::string in_vocab_path = "", int emb_dim = 100,
+             int min_count = 5, int window_size = 5, int ns_size = 5,
+             int max_sentence_length = 1e3, int epochs = 5, int num_workers = 4,
+             float unigram_pow = 0.75, float sample = 1e-3,
+             float init_lr = 0.05, bool cbow = 1, bool shrink_window_size = 1,
+             long long unigram_table_size = 1e8, long log_freq = 1e4);
     void train();
     void init_net();
     void build_exp_table();
     void build_unigram_table();
     void save_vectors();
+    std::vector<float> get_vector_syn0(std::string word);
+    std::vector<float> get_vector_syn1(std::string word);
+    std::vector<std::vector<float>> get_syn0();
+    std::vector<std::vector<float>> get_syn1();
+    std::vector<float> get_syn0_flat();
+    std::vector<float> get_syn1_flat();
+    const vocab::Vocab get_vocab() const;
 
 private:
     vocab::Vocab vocab;

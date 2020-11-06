@@ -33,9 +33,9 @@ Vocab::Vocab(string train_file_path, int min_count, float sample, bool verbose)
 };
 
 Vocab::Vocab(std::string train_file_path, int min_count, float sample,
-             bool verbose, size_t words, size_t train_words,
-             std::vector<Word> &vocab,
-             std::unordered_map<std::string, size_t> &w2id)
+             bool verbose, unsigned long long words,
+             unsigned long long train_words, std::vector<Word> &vocab,
+             std::unordered_map<std::string, unsigned long> &w2id)
     : train_file_path(train_file_path), min_count(min_count), sample(sample),
       verbose(verbose), words(words), train_words(train_words)
 {
@@ -43,7 +43,7 @@ Vocab::Vocab(std::string train_file_path, int min_count, float sample,
     this->w2id = move(w2id);
 };
 
-size_t Vocab::get_train_words() { return this->train_words; }
+unsigned long long Vocab::get_train_words() { return this->train_words; }
 
 Word &Vocab::operator[](size_t i) { return this->vocab[i]; };
 
@@ -195,7 +195,7 @@ string Vocab::id2word(size_t id)
     return id < this->vocab.size() ? this->vocab[id].word : "";
 }
 
-size_t Vocab::word2id(string word)
+long Vocab::word2id(string word)
 {
     auto it = this->w2id.find(word);
     if (it != this->w2id.end())
@@ -242,12 +242,12 @@ vector<Word> &Vocab::get_vocab() { return this->vocab; }
 
 const vector<Word> Vocab::get_vocab() const { return this->vocab; }
 
-Vocab read_vocab(string vocab_path, float sample)
+Vocab Vocab::read_vocab(string vocab_path, float sample)
 {
     return read_vocab(vocab_path, sample, true);
 }
 
-Vocab read_vocab(string vocab_path, float sample, bool verbose)
+Vocab Vocab::read_vocab(string vocab_path, float sample, bool verbose)
 {
     FILE *fp = fopen(vocab_path.c_str(), "rb");
     if (ferror(fp) == 0)
