@@ -77,16 +77,16 @@ Model hyperparameters for both tests:
 
 Next are listed, in descending order by similarity, the first 10 similar words to the word "cat", as found by the CBOW trained model:
 
-- cat
-- dog
-- llama
-- rat
-- bird
-- eared
-- zebra
-- squirrel
-- shrew
-- goat
+1. cat
+2. dog
+3. llama
+4. rat
+5. bird
+6. eared
+7. zebra
+8. squirrel
+9. shrew
+10. goat
 
 ### Results CBOW
 
