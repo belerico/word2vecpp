@@ -68,6 +68,7 @@ This will download and unzip the text8 dataset in the current directory and trai
 All the test reported below are run thanks to https://github.com/mfaruqui/eval-word-vectors script.  
 Model hyperparameters for both tests:
 
+- train file: [text8](http://mattmahoney.net/dc/textdata.html)
 - window size: 5
 - min count: 5
 - negative size: 10
