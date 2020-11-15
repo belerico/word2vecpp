@@ -1,5 +1,6 @@
 #include "w2v.h"
 #include "vocab.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <fstream> // std::ifstream
@@ -29,8 +30,8 @@ Word2Vec::Word2Vec(string train_file_path, string out_vectors_path,
       max_sentence_length(max_sentence_length), epochs(epochs),
       num_workers(num_workers), unigram_pow(unigram_pow), sample(sample),
       init_lr(init_lr), cbow(cbow), shrink_window_size(shrink_window_size),
-      unigram_table_size(unigram_table_size), log_freq(log_freq),
-      unigram_table(new long long[unigram_table_size]),
+      precomputed_l2(false), unigram_table_size(unigram_table_size),
+      log_freq(log_freq), unigram_table(new long long[unigram_table_size]),
       exp_table(new float[EXP_TABLE_SIZE])
 {
     if (!in_vocab_path.compare(""))
@@ -59,7 +60,7 @@ std::vector<float> Word2Vec::get_vector_syn0(string word)
 {
     /* size_t word_idx = this->vocab.word2id(word) * this->emb_dim;
     std::vector<float> v(this->emb_dim);
-    for (int i = 0; i < this->emb_dim; i++)
+    for (int i = 0; i < this->emb_dim; ++i)
         v[i] = this->syn0[word_idx + i];
     return v; */
     long word_idx = this->vocab.word2id(word);
@@ -74,7 +75,7 @@ std::vector<float> Word2Vec::get_vector_syn1(string word)
 {
     /* size_t word_idx = this->vocab.word2id(word) * this->emb_dim;
     std::vector<float> v(this->emb_dim);
-    for (int i = 0; i < this->emb_dim; i++)
+    for (int i = 0; i < this->emb_dim; ++i)
         v[i] = this->syn1[word_idx + i];
     return v; */
     long word_idx = this->vocab.word2id(word);
@@ -88,10 +89,10 @@ std::vector<float> Word2Vec::get_vector_syn1(string word)
 vector<vector<float>> Word2Vec::get_syn0()
 {
     vector<vector<float>> v(this->vocab.size());
-    for (size_t i = 0; i < this->vocab.size(); i++)
+    for (size_t i = 0; i < this->vocab.size(); ++i)
     {
         v[i] = vector<float>(this->emb_dim);
-        for (int j = 0; j < this->emb_dim; j++)
+        for (int j = 0; j < this->emb_dim; ++j)
             v[i][j] = this->syn0[i * this->emb_dim + j];
     }
     return v;
@@ -100,9 +101,9 @@ vector<vector<float>> Word2Vec::get_syn0()
 vector<float> Word2Vec::get_syn0_flat()
 {
     vector<float> v(this->vocab.size() * this->emb_dim);
-    for (size_t i = 0; i < this->vocab.size(); i++)
+    for (size_t i = 0; i < this->vocab.size(); ++i)
     {
-        for (int j = 0; j < this->emb_dim; j++)
+        for (int j = 0; j < this->emb_dim; ++j)
             v[i * this->emb_dim + j] = this->syn0[i * this->emb_dim + j];
     }
     return v;
@@ -111,10 +112,10 @@ vector<float> Word2Vec::get_syn0_flat()
 vector<vector<float>> Word2Vec::get_syn1()
 {
     vector<vector<float>> v(this->vocab.size());
-    for (size_t i = 0; i < this->vocab.size(); i++)
+    for (size_t i = 0; i < this->vocab.size(); ++i)
     {
         v[i] = vector<float>(this->emb_dim);
-        for (int j = 0; j < this->emb_dim; j++)
+        for (int j = 0; j < this->emb_dim; ++j)
             v[i][j] = this->syn1[i * this->emb_dim + j];
     }
     return v;
@@ -123,9 +124,9 @@ vector<vector<float>> Word2Vec::get_syn1()
 vector<float> Word2Vec::get_syn1_flat()
 {
     vector<float> v(this->vocab.size() * this->emb_dim);
-    for (size_t i = 0; i < this->vocab.size(); i++)
+    for (size_t i = 0; i < this->vocab.size(); ++i)
     {
-        for (int j = 0; j < this->emb_dim; j++)
+        for (int j = 0; j < this->emb_dim; ++j)
             v[i * this->emb_dim + j] = this->syn1[i * this->emb_dim + j];
     }
     return v;
@@ -173,10 +174,10 @@ void Word2Vec::save_vectors()
     ofstream os(this->out_vectors_path, ofstream::out);
     os << this->vocab.size() << ' ' << this->emb_dim << '\n';
 
-    for (size_t i = 0; i < this->vocab.size(); i++)
+    for (size_t i = 0; i < this->vocab.size(); ++i)
     {
         os << this->vocab[i].word << ' ';
-        for (int j = 0; j < this->emb_dim; j++)
+        for (int j = 0; j < this->emb_dim; ++j)
             os << this->syn0[i * this->emb_dim + j] << ' ';
         os << '\n';
     }
@@ -196,30 +197,185 @@ void Word2Vec::train()
     thread workers[this->num_workers];
 
     if (this->cbow)
-        for (int i = 0; i < this->num_workers; i++)
+        for (int i = 0; i < this->num_workers; ++i)
             workers[i] = thread(&Word2Vec::train_thread_cbow, this, i,
                                 ref(global_wc), start);
     else
-        for (int i = 0; i < this->num_workers; i++)
+        for (int i = 0; i < this->num_workers; ++i)
             workers[i] = thread(&Word2Vec::train_thread_sg, this, i,
                                 ref(global_wc), start);
 
-    for (int i = 0; i < this->num_workers; i++)
-        workers[i].join();
+    for (int i = 0; i < this->num_workers; ++i)
+        if (workers[i].joinable())
+            workers[i].join();
 
     auto t2 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> duration = t2 - t1;
     cout << "\nElpased: " << duration.count() << "s\n";
 };
 
+template <typename T> vector<size_t> argsort(const vector<T> &v)
+{
+
+    // initialize original index locations
+    vector<size_t> idx(v.size());
+    iota(idx.begin(), idx.end(), 0);
+
+    // sort indexes based on comparing values in v
+    // using std::stable_sort instead of std::sort
+    // to avoid unnecessary index re-orderings
+    // when v contains elements of equal values
+    stable_sort(idx.begin(), idx.end(),
+                [&v](size_t i1, size_t i2) { return v[i1] > v[i2]; });
+
+    return idx;
+}
+
+void Word2Vec::get_most_similar_thread(long word_idx, unsigned long start,
+                                       unsigned long end, vector<float> &cos)
+{
+    float dot = 0;
+    for (unsigned long i = start; i < end; ++i)
+    {
+        dot = 0;
+        for (int j = 0; j < this->emb_dim; ++j)
+            dot += this->syn0[word_idx * this->emb_dim + j] *
+                   this->syn0[i * this->emb_dim + j];
+        cos[i] = dot / (this->norm[i] * this->norm[word_idx]);
+    }
+    pthread_exit(NULL);
+};
+
+vector<string> Word2Vec::get_most_similar(string word, int topn,
+                                          int num_workers)
+{
+    cout << "\nGetting most similar words on " << num_workers << " threads\n";
+    auto t1 = std::chrono::high_resolution_clock::now();
+    thread workers[num_workers];
+    unsigned long chunk_size = this->vocab.size() / num_workers, start = 0,
+                  end = chunk_size;
+    unsigned int bonus = this->vocab.size() - chunk_size * num_workers;
+    if (bonus > 0)
+    {
+        end = chunk_size + 1;
+        --bonus;
+    }
+
+    if (!this->precomputed_l2)
+        this->precompute_l2_norm(num_workers);
+
+    long word_idx = this->vocab.word2id(word);
+    vector<string> sim_words{};
+    if (word_idx == -1)
+        return sim_words;
+
+    vector<float> cos(this->vocab.size());
+    for (int i = 0; i < num_workers; ++i)
+    {
+        // cout << "Thread " << i << " working from " << start << " to " << end
+        //      << '\n';
+        workers[i] = thread(&Word2Vec::get_most_similar_thread, this, word_idx,
+                            start, end, ref(cos));
+        start = end;
+        if (bonus > 0)
+        {
+            end += chunk_size + 1;
+            --bonus;
+        }
+        else
+            end += chunk_size;
+    }
+
+    for (int i = 0; i < num_workers; ++i)
+        if (workers[i].joinable())
+            workers[i].join();
+
+    vector<size_t> sorted_idxs = argsort(cos);
+
+    sim_words.resize(topn);
+    for (int i = 0; i < topn; ++i)
+        sim_words[i] = this->vocab.id2word(sorted_idxs[i]);
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<float> duration = t2 - t1;
+    cout << "Elpased: " << duration.count() << "s\n";
+
+    return sim_words;
+};
+
+void Word2Vec::precompute_l2_norm_thread(unsigned long start, unsigned long end)
+{
+    float dot = 0;
+    for (unsigned long i = start; i < end; ++i)
+    {
+        dot = 0;
+        for (int j = 0; j < this->emb_dim; ++j)
+            dot += this->syn0[i * this->emb_dim + j] *
+                   this->syn0[i * this->emb_dim + j];
+        this->norm[i] = sqrt(dot);
+    }
+    pthread_exit(NULL);
+};
+
+void Word2Vec::precompute_l2_norm(int num_workers)
+{
+    // - Distance matrix is symmetric, to reduce space we can use a traingular
+    //   matrix. Better to flat it down
+    // - The number of distances to be computed is, if 'n' is the number of
+    //   vectors, (n+1)*n/2
+    // - The distance between vector 'i' and 'j' can be accessed by
+    //   i*(i-1)/2 + j - 1
+
+    cout << "\nPrecomputing L2 distance matrix on " << num_workers
+         << " threads\n";
+    auto t1 = std::chrono::high_resolution_clock::now();
+    thread workers[num_workers];
+    unsigned long chunk_size = this->vocab.size() / num_workers, start = 0,
+                  end = chunk_size;
+    unsigned int bonus = this->vocab.size() - chunk_size * num_workers;
+    if (bonus > 0)
+    {
+        end = chunk_size + 1;
+        --bonus;
+    }
+    this->norm = new float[this->vocab.size()];
+
+    for (int i = 0; i < num_workers; ++i)
+    {
+        // cout << "Thread " << i << " working from " << start << " to " << end
+        //      << '\n';
+        workers[i] =
+            thread(&Word2Vec::precompute_l2_norm_thread, this, start, end);
+        start = end;
+        if (bonus > 0)
+        {
+            end += chunk_size + 1;
+            --bonus;
+        }
+        else
+            end += chunk_size;
+    }
+
+    for (int i = 0; i < num_workers; ++i)
+        if (workers[i].joinable())
+            workers[i].join();
+
+    this->precomputed_l2 = true;
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<float> duration = t2 - t1;
+    cout << "Elpased: " << duration.count() << "s\n";
+};
+
 void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
                                chrono::system_clock::time_point start)
 {
-    long long i, j, k,
-        shrink_value = 0, sentence_length = 0, sentence_position = 0,
-        epoch = this->epochs, word, context_word, wc = 0, prev_wc = 0,
-        sentence[this->max_sentence_length + 1], file_size, target, label,
-        train_words = this->vocab.get_train_words(), target_idx, context_idx;
+    int i, j, k, shrink_value = 0, sentence_length = 0, sentence_position = 0,
+                 epoch = this->epochs, label;
+    long long word, context_word,
+        wc = 0, prev_wc = 0, sentence[this->max_sentence_length + 1], file_size,
+        target, train_words = this->vocab.get_train_words(), target_idx,
+        context_idx;
     unsigned long long next_random = (long long)id;
     float f, g, init_lr = this->init_lr;
     string w;
@@ -313,7 +469,7 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
 
         // Actual train loop
         for (i = shrink_value; i < this->window_size * 2 + 1 - shrink_value;
-             i++)
+             ++i)
             if (i != this->window_size)
             {
                 // Convert the window offset 'i' into an index 'j' into the
@@ -326,11 +482,11 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
                 context_word = sentence[j];
                 context_idx = context_word * emb_dim;
 
-                for (j = 0; j < this->emb_dim; j++)
+                for (j = 0; j < this->emb_dim; ++j)
                     neu1e[j] = 0;
 
                 if (this->ns_size > 0)
-                    for (k = 0; k < this->ns_size + 1; k++)
+                    for (k = 0; k < this->ns_size + 1; ++k)
                     {
                         if (k == 0)
                         {
@@ -356,7 +512,7 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
                         // weights (in syn0) and the output word's weights
                         // (in syn1)
                         f = 0;
-                        for (j = 0; j < this->emb_dim; j++)
+                        for (j = 0; j < this->emb_dim; ++j)
                             f += this->syn0[context_idx + j] *
                                  this->syn1[target_idx + j];
 
@@ -375,18 +531,18 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
 
                         // Accumulate gradients for the ouput layer over the
                         // negative samples and the positive one
-                        for (j = 0; j < this->emb_dim; j++)
+                        for (j = 0; j < this->emb_dim; ++j)
                             neu1e[j] += g * this->syn1[target_idx + j];
 
                         // Update the output layer weights
-                        for (j = 0; j < this->emb_dim; j++)
+                        for (j = 0; j < this->emb_dim; ++j)
                             this->syn1[target_idx + j] =
                                 this->syn1[target_idx + j] +
                                 g * this->syn0[context_idx + j];
                     }
 
                 // Update the hidden layer weights
-                for (j = 0; j < this->emb_dim; j++)
+                for (j = 0; j < this->emb_dim; ++j)
                     this->syn0[context_idx + j] =
                         this->syn0[context_idx + j] + neu1e[j];
             }
@@ -400,16 +556,18 @@ void Word2Vec::train_thread_sg(int id, atomic<long long> &global_wc,
     }
     fclose(fi);
     free(neu1e);
+    pthread_exit(NULL);
 }
 
 void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                                  chrono::system_clock::time_point start)
 {
-    long long i, j, k,
-        shrink_value = 0, sentence_length = 0, sentence_position = 0,
-        epoch = this->epochs, cw, word, context_word, wc = 0, prev_wc = 0,
-        sentence[this->max_sentence_length + 1], file_size, target, label,
-        train_words = this->vocab.get_train_words(), target_idx, context_idx;
+    int i, j, k, shrink_value = 0, sentence_length = 0, sentence_position = 0,
+                 epoch = this->epochs, label, cw;
+    long long word, context_word,
+        wc = 0, prev_wc = 0, sentence[this->max_sentence_length + 1], file_size,
+        target, train_words = this->vocab.get_train_words(), target_idx,
+        context_idx;
     unsigned long long next_random = (long long)id;
     float f, g, init_lr = this->init_lr;
     string w;
@@ -496,9 +654,9 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
         word = sentence[sentence_position];
 
         cw = 0;
-        for (j = 0; j < this->emb_dim; j++)
+        for (j = 0; j < this->emb_dim; ++j)
             neu1[j] = 0;
-        for (j = 0; j < this->emb_dim; j++)
+        for (j = 0; j < this->emb_dim; ++j)
             neu1e[j] = 0;
 
         next_random = next_random * (unsigned long long)25214903917 + 11;
@@ -509,7 +667,7 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
 
         // Actual train loop
         for (i = shrink_value; i < this->window_size * 2 + 1 - shrink_value;
-             i++)
+             ++i)
             if (i != this->window_size)
             {
                 // Convert the window offset 'i' into an index 'j' into the
@@ -524,7 +682,7 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                 context_word = sentence[j];
                 context_idx = context_word * emb_dim;
 
-                for (j = 0; j < this->emb_dim; j++)
+                for (j = 0; j < this->emb_dim; ++j)
                     neu1[j] += this->syn0[context_idx + j];
 
                 cw++;
@@ -533,11 +691,11 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
         if (cw)
         {
             // average of the context word vectors
-            for (j = 0; j < this->emb_dim; j++)
+            for (j = 0; j < this->emb_dim; ++j)
                 neu1[j] /= cw;
 
             if (this->ns_size > 0)
-                for (k = 0; k < this->ns_size + 1; k++)
+                for (k = 0; k < this->ns_size + 1; ++k)
                 {
                     if (k == 0)
                     {
@@ -560,7 +718,7 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                     // Dot product between average of the context word vectors
                     // (neu1) and target word vector (syn1[target])
                     f = 0;
-                    for (j = 0; j < this->emb_dim; j++)
+                    for (j = 0; j < this->emb_dim; ++j)
                         f += neu1[j] * this->syn1[target_idx + j];
 
                     // Compute sigmoid(f) through exp_table
@@ -578,17 +736,17 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                     // Multiply the error by the output layer weights.
                     // Accumulate these gradients over all of the negative
                     // samples.
-                    for (j = 0; j < this->emb_dim; j++)
+                    for (j = 0; j < this->emb_dim; ++j)
                         neu1e[j] += g * this->syn1[target_idx + j];
 
                     // Update the output layer weights
-                    for (j = 0; j < this->emb_dim; j++)
+                    for (j = 0; j < this->emb_dim; ++j)
                         this->syn1[target_idx + j] =
                             this->syn1[target_idx + j] + g * neu1[j];
                 }
 
             for (i = shrink_value; i < this->window_size * 2 + 1 - shrink_value;
-                 i++)
+                 ++i)
                 if (i != this->window_size)
                 {
                     // Convert the window offset 'i' into an index 'j' into
@@ -604,7 +762,7 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
                     context_idx = context_word * emb_dim;
 
                     // Update context vectors
-                    for (j = 0; j < this->emb_dim; j++)
+                    for (j = 0; j < this->emb_dim; ++j)
                         this->syn0[context_idx + j] =
                             this->syn0[context_idx + j] + neu1e[j];
                 }
@@ -619,6 +777,7 @@ void Word2Vec::train_thread_cbow(int id, atomic<long long> &global_wc,
     fclose(fi);
     free(neu1);
     free(neu1e);
+    pthread_exit(NULL);
 }
 
 void Word2Vec::init_net()
@@ -630,9 +789,9 @@ void Word2Vec::init_net()
     this->syn0 = new float[this->vocab.size() * this->emb_dim];
     this->syn1 = new float[this->vocab.size() * this->emb_dim];
 
-    for (size_t i = 0; i < this->vocab.size(); i++)
+    for (size_t i = 0; i < this->vocab.size(); ++i)
     {
-        for (int j = 0; j < this->emb_dim; j++)
+        for (int j = 0; j < this->emb_dim; ++j)
         {
             next_random = next_random * (unsigned long long)25214903917 + 11;
             // Random uniform in the range [-0.5; 0.5] / emb_dim
@@ -640,7 +799,7 @@ void Word2Vec::init_net()
                 (((next_random & 0xFFFF) / (float)65536) - 0.5) / this->emb_dim;
         }
 
-        for (int j = 0; j < this->emb_dim; j++)
+        for (int j = 0; j < this->emb_dim; ++j)
             this->syn1[i * this->emb_dim + j] = 0;
     }
 
@@ -654,7 +813,7 @@ void Word2Vec::build_exp_table()
     cout << "\nBuilding precomputed sigmoid table\n";
     auto t1 = std::chrono::high_resolution_clock::now();
 
-    for (int i = 0; i < EXP_TABLE_SIZE; i++)
+    for (int i = 0; i < EXP_TABLE_SIZE; ++i)
     {
 
         // Compute e^x in the range -6.0 to +6.0.
@@ -679,7 +838,7 @@ void Word2Vec::build_unigram_table()
     double train_words_pow = 0, d1;
     long vocab_size = vocab.size();
 
-    for (i = 0; i < vocab_size; i++)
+    for (i = 0; i < vocab_size; ++i)
         train_words_pow += pow(this->vocab[i].count, this->unigram_pow);
 
     // 'i' is the vocabulary index of the current word. Word 'i' will appear
@@ -689,7 +848,7 @@ void Word2Vec::build_unigram_table()
     // Calculate the probability that we choose word 'i'
     d1 = pow(vocab[i].count, this->unigram_pow) / train_words_pow;
 
-    for (int j = 0; j < this->unigram_table_size; j++)
+    for (int j = 0; j < this->unigram_table_size; ++j)
     {
         this->unigram_table[j] = i;
 
@@ -697,7 +856,7 @@ void Word2Vec::build_unigram_table()
         // probability of choosing this word, move to the next word.
         if (j / (double)this->unigram_table_size > d1)
         {
-            i++;
+            ++i;
 
             // Calculate the probability for the new word, and accumulate it
             // with the probabilities of all previous words, so that we can

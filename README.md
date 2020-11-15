@@ -61,7 +61,54 @@ As an example, one can train a word2vec model on the [text8](http://mattmahoney.
 1. chmod +x train_text8.sh
 2. ./train_text8.sh
 
-This will download and unzip the text8 dataset in the current directory and train a word2vec CBOW model  
+This will download and unzip the text8 dataset in the current directory and train a word2vec CBOW model       
+
+## Results
+
+All the test reported below are run thanks to https://github.com/mfaruqui/eval-word-vectors script.  
+Model hyperparameters for both tests:
+
+- window size: 5
+- min count: 5
+- negative size: 10
+- embedding dimension: 100
+- others by default
+
+### Results CBOW
+
+| Dataset             | Num Pairs | Not found | Rho (Mine) | Rho (Gensim) | Rho (Mikolov) |
+|---------------------|-----------|-----------|------------|--------------|---------------|
+| EN-MC-30.txt        | 30        | 0         | 0.5450     | 0.5277       | 0.6047        |
+| EN-MTurk-771.txt    | 771       | 2         | 0.5451     | 0.5516       | 0.5468        |
+| EN-SimVerb-3500.txt | 3500      | 255       | 0.1405     | 0.1428       | 0.1432        |
+| EN-WS-353-ALL.txt   | 353       | 2         | 0.6611     | 0.6632       | 0.6736        |
+| EN-WS-353-REL.txt   | 252       | 1         | 0.6283     | 0.6293       | 0.6400        |
+| EN-YP-130.txt       | 130       | 12        | 0.2501     | 0.2746       | 0.2652        |
+| EN-VERB-143.txt     | 144       | 0         | 0.3427     | 0.3607       | 0.3609        |
+| EN-MEN-TR-3k.txt    | 3000      | 13        | 0.5869     | 0.5884       | 0.5963        |
+| EN-RW-STANFORD.txt  | 2034      | 1083      | 0.3373     | 0.3277       | 0.3282        |
+| EN-MTurk-287.txt    | 287       | 3         | 0.6363     | 0.6373       | 0.6448        |
+| EN-RG-65.txt        | 65        | 0         | 0.5642     | 0.5173       | 0.5613        |
+| EN-WS-353-SIM.txt   | 203       | 1         | 0.6991     | 0.6971       | 0.7153        |
+| EN-SIMLEX-999.txt   | 999       | 7         | 0.2626     | 0.2659       | 0.2729        |                 
+
+### Results Skip-Gram
+
+| Dataset             | Num Pairs | Not found | Rho (Mine) | Rho (Gensim) | Rho (Mikolov) |
+|---------------------|-----------|-----------|------------|--------------|---------------|
+| EN-MC-30.txt        | 30        | 0         | 0.6674     | 0.5733       | 0.6650        |
+| EN-MTurk-771.txt    | 771       | 2         | 0.5655     | 0.5641       | 0.5603        |
+| EN-SimVerb-3500.txt | 3500      | 255       | 0.1702     | 0.1747       | 0.1731        |
+| EN-WS-353-ALL.txt   | 353       | 2         | 0.6755     | 0.6649       | 0.6798        |
+| EN-WS-353-REL.txt   | 252       | 1         | 0.6483     | 0.6341       | 0.6496        |
+| EN-YP-130.txt       | 130       | 12        | 0.3325     | 0.3497       | 0.3220        |
+| EN-VERB-143.txt     | 144       | 0         | 0.3738     | 0.3467       | 0.3828        |
+| EN-MEN-TR-3k.txt    | 3000      | 13        | 0.6042     | 0.6097       | 0.6064        |
+| EN-RW-STANFORD.txt  | 2034      | 1083      | 0.3833     | 0.3774       | 0.3861        |
+| EN-MTurk-287.txt    | 287       | 3         | 0.6530     | 0.6359       | 0.6446        |
+| EN-RG-65.txt        | 65        | 0         | 0.6215     | 0.5823       | 0.6324        |
+| EN-WS-353-SIM.txt   | 203       | 1         | 0.7316     | 0.7085       | 0.7260        |
+| EN-SIMLEX-999.txt   | 999       | 7         | 0.2985     | 0.3150       | 0.2983        |
 
 ## Future works
 
