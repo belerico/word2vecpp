@@ -74,6 +74,19 @@ Model hyperparameters for both tests:
 - embedding dimension: 100
 - others by default
 
+Next are listed, in descending order by similarity, the first 10 similar words to the word "cat", as found by the CBOW trained model:
+
+- cat
+- dog
+- llama
+- rat
+- bird
+- eared
+- zebra
+- squirrel
+- shrew
+- goat
+
 ### Results CBOW
 
 | Dataset             | Num Pairs | Not found | Rho (Mine) | Rho (Gensim) | Rho (Mikolov) |
