@@ -18,8 +18,12 @@ public:
           bool verbose);
     Vocab(std::string train_file_path, int min_count, float sample,
           bool verbose, unsigned long long words,
-          unsigned long long train_words, std::vector<Word> &vocab,
-          std::unordered_map<std::string, unsigned long> &w2id);
+          unsigned long long train_words, std::vector<Word> vocab,
+          std::unordered_map<std::string, unsigned long> w2id);
+    Vocab(const Vocab &v);            // copy constructor
+    Vocab(Vocab &&v);                 // move constructor
+    Vocab &operator=(const Vocab &v); // copy assignment
+    Vocab &operator=(Vocab &&v);      // move assignment
     Word &operator[](size_t i);
     void build_vocab();
     std::string id2word(unsigned long id);
@@ -33,8 +37,10 @@ public:
     size_t size();
     unsigned long long get_train_words();
     float get_keep_prob(std::string word);
+    static Vocab read_vocab(std::string vocab_path);
     static Vocab read_vocab(std::string vocab_path, float sample);
-    static Vocab read_vocab(std::string vocab_path, float sample, bool verbose);
+    static Vocab read_vocab(std::string vocab_path, float sample,
+                             bool verbose);
 
 private:
     std::string train_file_path;

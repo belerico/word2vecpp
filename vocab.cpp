@@ -15,9 +15,10 @@ using namespace std;
 namespace vocab
 {
 
-Word::Word() : word(""), count(0){};
+Word::Word() : word(""), count(0), keep_prob(0.0){};
 
-Word::Word(std::string word, size_t count) : word(word), count(count){};
+Word::Word(std::string word, size_t count)
+    : word(word), count(count), keep_prob(0.0){};
 
 Vocab::Vocab(){};
 
@@ -34,14 +35,25 @@ Vocab::Vocab(string train_file_path, int min_count, float sample, bool verbose)
 
 Vocab::Vocab(std::string train_file_path, int min_count, float sample,
              bool verbose, unsigned long long words,
-             unsigned long long train_words, std::vector<Word> &vocab,
-             std::unordered_map<std::string, unsigned long> &w2id)
+             unsigned long long train_words, std::vector<Word> vocab,
+             std::unordered_map<std::string, unsigned long> w2id)
     : train_file_path(train_file_path), min_count(min_count), sample(sample),
       verbose(verbose), words(words), train_words(train_words)
 {
     this->vocab = move(vocab);
     this->w2id = move(w2id);
 };
+
+Vocab::Vocab(const Vocab &v)
+    : train_file_path(v.train_file_path), min_count(v.min_count),
+      sample(v.sample), verbose(v.verbose), words(v.words),
+      train_words(v.train_words)
+{
+    this->vocab = v.vocab;
+    this->w2id = v.w2id;
+};
+
+Vocab::Vocab(Vocab &&v) { *this = std::move(v); };
 
 unsigned long long Vocab::get_train_words() { return this->train_words; }
 
@@ -188,6 +200,42 @@ void Vocab::build_vocab()
         throw runtime_error("Error reading file");
 }
 
+Vocab &Vocab::operator=(const Vocab &v) // copy assignment
+{
+    this->train_file_path = v.train_file_path;
+    this->min_count = v.min_count;
+    this->sample = v.sample;
+    this->verbose = v.verbose;
+    this->words = v.words;
+    this->train_words = v.train_words;
+    this->vocab = v.vocab;
+    this->w2id = v.w2id;
+    return *this;
+}
+
+Vocab &Vocab::operator=(Vocab &&v) // move assignment
+{
+    if (this != &v)
+    {
+        this->train_file_path = v.train_file_path;
+        this->min_count = v.min_count;
+        this->sample = v.sample;
+        this->verbose = v.verbose;
+        this->words = v.words;
+        this->train_words = v.train_words;
+        this->vocab = move(v.vocab);
+        this->w2id = move(v.w2id);
+
+        v.train_file_path = "";
+        v.min_count = 0;
+        v.sample = 0;
+        v.verbose = false;
+        v.words = 0;
+        v.train_words = 0;
+    }
+    return *this;
+}
+
 size_t Vocab::size() { return this->vocab.size(); }
 
 string Vocab::id2word(size_t id)
@@ -242,6 +290,11 @@ vector<Word> &Vocab::get_vocab() { return this->vocab; }
 
 const vector<Word> Vocab::get_vocab() const { return this->vocab; }
 
+Vocab Vocab::read_vocab(string vocab_path)
+{
+    return read_vocab(vocab_path, 0.0, true);
+}
+
 Vocab Vocab::read_vocab(string vocab_path, float sample)
 {
     return read_vocab(vocab_path, sample, true);
@@ -259,6 +312,7 @@ Vocab Vocab::read_vocab(string vocab_path, float sample, bool verbose)
         size_t count = 0, train_words = 0, idx_vocab = 0;
         char buffer[BUFFER_LENGTH];
         string word, number;
+        Word w;
         vector<Word> vocab{};
         unordered_map<string, size_t> w2id{};
 
@@ -282,7 +336,8 @@ Vocab Vocab::read_vocab(string vocab_path, float sample, bool verbose)
                 {
                     count = stoi(number);
                     w2id[word] = idx_vocab;
-                    vocab.push_back(Word(word, count));
+                    w = Word(word, count);
+                    vocab.push_back(w);
                     train_words += count;
                     idx_vocab++;
                     word_found = false;
@@ -298,9 +353,10 @@ Vocab Vocab::read_vocab(string vocab_path, float sample, bool verbose)
         fclose(fp);
 
         vocab.shrink_to_fit();
-        for (auto &w : vocab)
-            w.keep_prob = (sqrt(w.count / (sample * train_words)) + 1) *
-                          (sample * train_words) / w.count;
+        if (sample != 0.0)
+            for (auto &w : vocab)
+                w.keep_prob = (sqrt(w.count / (sample * train_words)) + 1) *
+                              (sample * train_words) / w.count;
 
         auto t2 = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float> duration = t2 - t1;
@@ -311,7 +367,6 @@ Vocab Vocab::read_vocab(string vocab_path, float sample, bool verbose)
             cout << "Unique words: " << vocab.size() << '\n';
             cout << "Elapsed: " << duration.count() << '\n';
         }
-
         return Vocab(vocab_path, vocab[vocab.size() - 1].count, sample, true,
                      train_words, train_words, vocab, w2id);
     }
