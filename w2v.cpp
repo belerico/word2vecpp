@@ -1,6 +1,6 @@
 #include "w2v.h"
+#include "utils.h"
 #include "vocab.h"
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <fstream> // std::ifstream
@@ -11,6 +11,7 @@
 #include <vector>
 
 using namespace std;
+using namespace utils;
 using namespace vocab;
 
 #define MAX_EXP 6
@@ -214,25 +215,8 @@ void Word2Vec::train()
     cout << "\nElpased: " << duration.count() << "s\n";
 };
 
-template <typename T> vector<size_t> argsort(const vector<T> &v)
-{
-
-    // initialize original index locations
-    vector<size_t> idx(v.size());
-    iota(idx.begin(), idx.end(), 0);
-
-    // sort indexes based on comparing values in v
-    // using std::stable_sort instead of std::sort
-    // to avoid unnecessary index re-orderings
-    // when v contains elements of equal values
-    stable_sort(idx.begin(), idx.end(),
-                [&v](size_t i1, size_t i2) { return v[i1] > v[i2]; });
-
-    return idx;
-}
-
 void Word2Vec::get_most_similar_thread(long word_idx, unsigned long start,
-                                       unsigned long end, vector<float> &cos)
+                                       unsigned long end, float *cos)
 {
     float dot = 0;
     for (unsigned long i = start; i < end; ++i)
@@ -269,7 +253,7 @@ vector<string> Word2Vec::get_most_similar(string word, int topn,
     if (word_idx == -1)
         return sim_words;
 
-    vector<float> cos(this->vocab.size());
+    float *cos = new float[this->vocab.size()];
     for (int i = 0; i < num_workers; ++i)
     {
         // cout << "Thread " << i << " working from " << start << " to " << end
@@ -290,11 +274,13 @@ vector<string> Word2Vec::get_most_similar(string word, int topn,
         if (workers[i].joinable())
             workers[i].join();
 
-    vector<size_t> sorted_idxs = argsort(cos);
+    size_t *sorted_idxs = Utils::argsort(cos, this->vocab.size());
+    free(cos);
 
     sim_words.resize(topn);
     for (int i = 0; i < topn; ++i)
         sim_words[i] = this->vocab.id2word(sorted_idxs[i]);
+    free(sorted_idxs);
 
     auto t2 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> duration = t2 - t1;

@@ -2,11 +2,11 @@
 #define W2V_H
 
 #include "vocab.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <random>
+#include <numeric>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace w2v
@@ -57,7 +57,8 @@ private:
                            std::chrono::system_clock::time_point start);
     void precompute_l2_norm_thread(unsigned long start, unsigned long end);
     void get_most_similar_thread(long word_idx, unsigned long start,
-                                 unsigned long end, std::vector<float> &sim);
+                                 unsigned long end, float *sim);
 };
+
 } // namespace w2v
 #endif
